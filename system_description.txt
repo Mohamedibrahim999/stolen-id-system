@@ -1,0 +1,194 @@
+# Stolen National ID Verification System
+
+## 1. Introduction
+
+Identity theft is a serious problem that can lead to financial fraud, illegal account creation, and misuse of personal data. In many cases, when a national ID card is stolen, the owner reports the incident at a police station and receives a report number. However, many websites and services cannot easily verify whether a specific ID number has been reported as stolen.
+
+This project proposes a system that allows organizations and websites to verify if a national ID number has been reported stolen through an API service.
+
+---
+
+# 2. Project Objective
+
+The goal of this project is to design and implement a system that:
+
+* Stores reported stolen ID numbers.
+* Allows authorized entities to check if an ID number is reported stolen.
+* Provides a simple and secure API for verification.
+
+The system aims to reduce identity fraud and improve digital identity security.
+
+---
+
+# 3. Technologies Used
+
+The following technologies are used to build the system:
+
+* **Python** – Main programming language.
+* **FastAPI** – Backend framework used to create APIs.
+* **MySQL** – Database system used to store stolen ID records.
+* **MySQL Workbench** – Database management tool.
+
+---
+
+# 4. System Architecture
+
+The system consists of three main components:
+
+1. **Database Layer**
+
+   * Stores stolen ID records.
+   * Contains information such as:
+
+     * National ID number
+     * Police report number
+     * Police station
+     * Report date
+     * Status
+
+2. **Backend API (FastAPI)**
+
+   * Provides endpoints for checking ID status.
+   * Connects the database with external systems.
+
+3. **External Systems**
+
+   * Websites, banks, or companies that need to verify identity numbers.
+
+Workflow:
+
+Police Station → Add stolen ID → Database → FastAPI API → Websites check ID
+
+---
+
+# 5. Database Design
+
+Database Name:
+
+stolen_id_system
+
+Main Table:
+
+stolen_ids
+
+Fields:
+
+* id (Primary Key)
+* national_id
+* report_number
+* police_station
+* report_date
+* status
+
+Example Record:
+
+| id | national_id    | report_number | police_station | report_date | status |
+| -- | -------------- | ------------- | -------------- | ----------- | ------ |
+| 1  | 29801011234567 | 1234/2026     | Nasr City      | 2026-04-13  | stolen |
+
+---
+
+# 6. Implemented API
+
+The system currently includes the following API endpoint:
+
+### Check ID Status
+
+Endpoint:
+
+/check-id
+
+Method:
+
+GET
+
+Example request:
+
+/check-id?national_id=29801011234567
+
+Example response:
+
+If ID is stolen:
+
+{
+"status": "stolen"
+}
+
+If ID is clear:
+
+{
+"status": "clear"
+}
+
+---
+
+# 7. Current System Features
+
+The current system can:
+
+* Store stolen ID records.
+* Query the database for ID verification.
+* Provide an API for identity checking.
+* Return clear or stolen status.
+
+---
+
+# 8. Future Improvements
+
+To make the system production-ready, the following features should be added:
+
+### Security
+
+* API authentication using API Keys
+* Rate limiting to prevent abuse
+* Encryption for sensitive data
+
+### Administration
+
+* Admin dashboard
+* User authentication system
+* Role management
+
+### Data Validation
+
+* Verify national ID format
+* Prevent duplicate reports
+
+### Evidence Upload
+
+* Upload scanned police reports
+
+### Notifications
+
+* Alert systems for banks or institutions
+
+### Logging
+
+* Record all verification requests
+
+### Deployment
+
+* Host system on a cloud server
+* Configure domain and SSL
+
+---
+
+# 9. Possible Use Cases
+
+The system can be used by:
+
+* Banks
+* Telecom companies
+* Online services
+* Government institutions
+* Financial platforms
+
+These organizations can check ID numbers before creating accounts or processing transactions.
+
+---
+
+# 10. Conclusion
+
+The Stolen National ID Verification System provides a simple solution for detecting identity theft and preventing fraudulent activities. By using modern technologies such as FastAPI and MySQL, the system can be integrated with many platforms and services.
+
+With further development, this system can become a reliable tool for identity verification and fraud prevention.
