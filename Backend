@@ -1,1 +1,232 @@
 
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from pydantic import BaseModel
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+
+from datetime import datetime, timedelta
+import pymysql
+
+# ─────────────────────────────
+# APP
+# ─────────────────────────────
+app = FastAPI(title="Stolen ID System", version="2.2")
+
+# ─────────────────────────────
+# CORS
+# ─────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─────────────────────────────
+# DATABASE
+# ─────────────────────────────
+db = pymysql.connect(
+    host="localhost",
+    user="root",
+    password="012304",
+    database="stolen_id_system",
+    autocommit=True,
+)
+
+# ─────────────────────────────
+# SECURITY (ARGON2)
+# ─────────────────────────────
+SECRET_KEY = "CHANGE_THIS_TO_STRONG_SECRET"
+ALGORITHM = "HS256"
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+security = HTTPBearer()
+
+# ─────────────────────────────
+# MODELS
+# ─────────────────────────────
+class User(BaseModel):
+    username: str
+    password: str
+
+
+class ReportID(BaseModel):
+    national_id: str
+    report_number: str
+    police_station: str
+
+
+# ─────────────────────────────
+# JWT
+# ─────────────────────────────
+def create_token(data: dict):
+    payload = data.copy()
+    payload["exp"] = datetime.utcnow() + timedelta(hours=2)
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        return jwt.decode(
+            credentials.credentials,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+        )
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def admin_only(user=Depends(verify_token)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admins only")
+    return user
+
+
+# ─────────────────────────────
+# REGISTER
+# ─────────────────────────────
+@app.post("/register")
+def register(user: User):
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+
+    try:
+        hashed = pwd_context.hash(user.password)
+
+        # 🔥 RULE: detect admin tag
+        if "@admin" in user.username.lower():
+            role = "admin"
+        else:
+            role = "user"
+
+        cursor.execute(
+            "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
+            (user.username, hashed, role),
+        )
+
+        return {
+            "message": "User created",
+            "role": role
+        }
+
+    except pymysql.err.IntegrityError:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    finally:
+        cursor.close()
+
+
+# ─────────────────────────────
+# LOGIN
+# ─────────────────────────────
+@app.post("/login")
+def login(user: User):
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+
+    cursor.execute(
+        "SELECT id, password, role FROM users WHERE username=%s",
+        (user.username,),
+    )
+    result = cursor.fetchone()
+    cursor.close()
+
+    if not result:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    if not pwd_context.verify(user.password, result["password"]):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    token = create_token(
+        {"user_id": result["id"], "role": result["role"]}
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": result["role"],
+    }
+
+
+# ─────────────────────────────
+# CHECK ID (PUBLIC)
+# ─────────────────────────────
+@app.get("/check-id")
+def check_id(national_id: str):
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+
+    cursor.execute(
+        """
+        SELECT national_id, report_number, police_station, report_date
+        FROM stolen_ids
+        WHERE national_id=%s
+        """,
+        (national_id,),
+    )
+
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return {
+            "status": "stolen",
+            "data": result,
+        }
+
+    return {"status": "clear"}
+
+
+# ─────────────────────────────
+# REPORT ID (PROTECTED)
+# ─────────────────────────────
+@app.post("/report-id")
+def report_id(data: ReportID, user=Depends(verify_token)):
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+
+    try:
+        print("USER:", user)
+        print("DATA:", data)
+
+        cursor.execute(
+            """
+           INSERT INTO stolen_ids (national_id, report_number, police_station)
+VALUES (%s, %s, %s)
+            """,
+            (data.national_id, data.report_number, data.police_station),
+        )
+
+        return {
+            "message": "ID reported successfully",
+            "national_id": data.national_id,
+            "status": "active"
+        }
+
+    except pymysql.err.IntegrityError:
+        raise HTTPException(status_code=400, detail="ID already reported")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        cursor.close()
+
+
+# ─────────────────────────────
+# ADMIN ONLY
+# ─────────────────────────────
+@app.get("/all")
+def get_all(user=Depends(admin_only)):
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+
+    cursor.execute("SELECT * FROM stolen_ids")
+    result = cursor.fetchall()
+    cursor.close()
+
+    return {"data": result}
